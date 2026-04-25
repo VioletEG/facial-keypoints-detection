@@ -10,11 +10,15 @@ from torch.utils.data import DataLoader
 
 from facial_keypoints.data import (
     FacialKeypointsDataset,
+    IMAGE_SIZE,
     load_id_lookup,
     load_test_dataframe,
     prepare_test_images,
 )
 from facial_keypoints.models import build_model
+
+MIN_COORDINATE = 0.0
+MAX_COORDINATE = float(IMAGE_SIZE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,7 +67,7 @@ def predict_with_ensemble(ckpt_paths: list[Path], images: np.ndarray, batch_size
     if ensemble is None or target_columns is None:
         raise RuntimeError("No valid checkpoints loaded for ensemble prediction")
     ensemble = ensemble / len(ckpt_paths)
-    return np.clip(ensemble, 0.0, 96.0), target_columns
+    return np.clip(ensemble, MIN_COORDINATE, MAX_COORDINATE), target_columns
 
 
 def build_submission(lookup: pd.DataFrame, pred_matrix: np.ndarray, target_columns: list[str]) -> pd.DataFrame:
