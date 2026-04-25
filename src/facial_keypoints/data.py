@@ -22,7 +22,7 @@ class TrainData:
 
 
 def _parse_image(pixel_string: str) -> np.ndarray:
-    arr = np.fromstring(pixel_string, sep=" ", dtype=np.float32)
+    arr = np.fromiter((float(x) for x in pixel_string.split()), dtype=np.float32)
     if arr.size != IMAGE_SIZE * IMAGE_SIZE:
         raise ValueError(f"Unexpected image length {arr.size}, expected {IMAGE_SIZE * IMAGE_SIZE}")
     return (arr.reshape(IMAGE_SIZE, IMAGE_SIZE) / 255.0).astype(np.float32)
@@ -63,6 +63,8 @@ class FacialKeypointsDataset(Dataset):
         self.images = images
         self.targets = targets
         self.masks = masks
+        if self.targets is not None and self.masks is None:
+            raise ValueError("masks must be provided when targets are provided")
 
     def __len__(self) -> int:
         return int(self.images.shape[0])
