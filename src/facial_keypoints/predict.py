@@ -60,7 +60,8 @@ def predict_with_ensemble(ckpt_paths: list[Path], images: np.ndarray, batch_size
         fold_pred = np.concatenate(preds, axis=0)
         ensemble = fold_pred if ensemble is None else ensemble + fold_pred
 
-    assert ensemble is not None and target_columns is not None
+    if ensemble is None or target_columns is None:
+        raise RuntimeError("No valid checkpoints loaded for ensemble prediction")
     ensemble = ensemble / len(ckpt_paths)
     return np.clip(ensemble, 0.0, 96.0), target_columns
 

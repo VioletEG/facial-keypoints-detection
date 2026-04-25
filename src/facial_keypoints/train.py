@@ -89,7 +89,8 @@ def train_one_fold(
             best_rmse = val_rmse
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
-    assert best_state is not None, "No best state found during training"
+    if best_state is None:
+        raise RuntimeError("No best state found during training")
     return best_state, best_rmse
 
 
