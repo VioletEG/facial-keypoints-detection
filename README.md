@@ -3,9 +3,8 @@
 本仓库按 `Mini Project Instruction.pdf` 的要求，围绕 Kaggle 赛题 **Facial Keypoints Detection** 构建了一个可复现的端到端项目：
 
 - 数据读取与预处理（含缺失关键点标签掩码）
-- Baseline / Improved 两种 CNN 模型（Improved 默认使用更深网络）
+- Baseline / Improved 两种 CNN 模型
 - K-Fold 训练与验证（默认 5-fold）
-- 训练时随机水平翻转增强 + 推理时水平翻转 TTA
 - 基于 `IdLookupTable.csv` 的提交文件生成
 
 ## 1. 环境准备

@@ -1,4 +1,4 @@
-from facial_keypoints.predict import main
+from src.facial_keypoints.predict import main
 
 
 if __name__ == "__main__":

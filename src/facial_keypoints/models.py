@@ -24,7 +24,6 @@ class BaselineCNN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
             nn.Linear(512, num_outputs),
-            nn.Sigmoid(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -51,18 +50,16 @@ class ImprovedCNN(nn.Module):
             block(1, 32),
             block(32, 64),
             block(64, 128),
-            block(128, 256),
         )
         self.head = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(256 * 6 * 6, 1024),
+            nn.Linear(128 * 12 * 12, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
             nn.Linear(512, num_outputs),
-            nn.Sigmoid(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -73,18 +70,6 @@ class MaskedMSELoss(nn.Module):
     def forward(self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         diff_sq = (pred - target) ** 2
         masked = diff_sq * mask
-        denom = mask.sum().clamp_min(1.0)
-        return masked.sum() / denom
-
-
-class MaskedSmoothL1Loss(nn.Module):
-    def __init__(self, beta: float = 1.0) -> None:
-        super().__init__()
-        self.beta = beta
-
-    def forward(self, pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        per_coord = torch.nn.functional.smooth_l1_loss(pred, target, reduction="none", beta=self.beta)
-        masked = per_coord * mask
         denom = mask.sum().clamp_min(1.0)
         return masked.sum() / denom
 

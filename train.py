@@ -1,4 +1,4 @@
-from facial_keypoints.train import main
+from src.facial_keypoints.train import main
 
 
 if __name__ == "__main__":
