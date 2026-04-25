@@ -11,6 +11,9 @@ from torch.utils.data import DataLoader
 from facial_keypoints.data import (
     FacialKeypointsDataset,
     IMAGE_SIZE,
+    apply_horizontal_flip_to_targets,
+    build_horizontal_flip_mappings,
+    denormalize_coordinates,
     load_id_lookup,
     load_test_dataframe,
     prepare_test_images,
@@ -54,12 +57,16 @@ def predict_with_ensemble(ckpt_paths: list[Path], images: np.ndarray, batch_size
         model = build_model(model_name, num_outputs=len(this_target_cols)).to(device)
         model.load_state_dict(payload["model_state"])
         model.eval()
+        flip_indices, x_mask = build_horizontal_flip_mappings(this_target_cols)
 
         preds = []
         with torch.no_grad():
             for xb in loader:
                 xb = xb.to(device)
-                preds.append(model(xb).cpu().numpy())
+                pred = model(xb).cpu().numpy()
+                pred_flip = model(torch.flip(xb, dims=[3])).cpu().numpy()
+                pred_flip = apply_horizontal_flip_to_targets(pred_flip, flip_indices, x_mask)
+                preds.append((pred + pred_flip) * 0.5)
 
         fold_pred = np.concatenate(preds, axis=0)
         ensemble = fold_pred if ensemble is None else ensemble + fold_pred
@@ -67,6 +74,7 @@ def predict_with_ensemble(ckpt_paths: list[Path], images: np.ndarray, batch_size
     if ensemble is None or target_columns is None:
         raise RuntimeError("No valid checkpoints loaded for ensemble prediction")
     ensemble = ensemble / len(ckpt_paths)
+    ensemble = denormalize_coordinates(ensemble)
     return np.clip(ensemble, MIN_COORDINATE, MAX_COORDINATE), target_columns
 
 
