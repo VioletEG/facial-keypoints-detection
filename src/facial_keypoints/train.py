@@ -12,8 +12,14 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from facial_keypoints.data import FacialKeypointsDataset, load_train_dataframe, prepare_train_data
-from facial_keypoints.models import MaskedMSELoss, build_model
+from facial_keypoints.data import (
+    IMAGE_SIZE,
+    FacialKeypointsDataset,
+    build_horizontal_flip_mappings,
+    load_train_dataframe,
+    prepare_train_data,
+)
+from facial_keypoints.models import MaskedSmoothL1Loss, build_model
 
 
 def set_seed(seed: int) -> None:
@@ -26,7 +32,7 @@ def set_seed(seed: int) -> None:
 
 
 def rmse_with_mask(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> float:
-    se = ((pred - target) ** 2) * mask
+    se = (((pred - target) * IMAGE_SIZE) ** 2) * mask
     mse = se.sum() / mask.sum().clamp_min(1.0)
     return float(torch.sqrt(mse).item())
 
@@ -38,18 +44,30 @@ def train_one_fold(
     images: np.ndarray,
     targets: np.ndarray,
     masks: np.ndarray,
+    flip_indices: np.ndarray,
+    x_mask: np.ndarray,
     args: argparse.Namespace,
     device: torch.device,
 ):
-    train_ds = FacialKeypointsDataset(images[train_idx], targets[train_idx], masks[train_idx])
+    train_ds = FacialKeypointsDataset(
+        images[train_idx],
+        targets[train_idx],
+        masks[train_idx],
+        augment=not args.disable_augment,
+        flip_indices=flip_indices,
+        x_mask=x_mask,
+    )
     val_ds = FacialKeypointsDataset(images[val_idx], targets[val_idx], masks[val_idx])
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     model = build_model(args.model, num_outputs=targets.shape[1]).to(device)
-    criterion = MaskedMSELoss()
+    criterion = MaskedSmoothL1Loss()
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(args.epochs, 1), eta_min=args.lr * 0.05
+    )
 
     best_rmse = float("inf")
     best_state = None
@@ -63,6 +81,7 @@ def train_one_fold(
             pred = model(xb)
             loss = criterion(pred, yb, mb)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             train_losses.append(loss.item())
 
@@ -82,12 +101,14 @@ def train_one_fold(
         val_rmse = rmse_with_mask(val_pred, val_target, val_mask)
 
         print(
-            f"fold={fold} epoch={epoch} train_loss={np.mean(train_losses):.6f} val_rmse={val_rmse:.6f}"
+            f"fold={fold} epoch={epoch} lr={optimizer.param_groups[0]['lr']:.6e} "
+            f"train_loss={np.mean(train_losses):.6f} val_rmse={val_rmse:.6f}"
         )
 
         if val_rmse < best_rmse:
             best_rmse = val_rmse
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        scheduler.step()
 
     if best_state is None:
         raise RuntimeError("No best state found during training")
@@ -104,6 +125,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--disable-augment", action="store_true", help="Disable random horizontal-flip augmentation")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
@@ -121,13 +143,14 @@ def main() -> None:
     train_data = prepare_train_data(train_df)
 
     images, targets, masks = train_data.images, train_data.targets, train_data.masks
+    flip_indices, x_mask = build_horizontal_flip_mappings(train_data.target_columns)
 
     kf = KFold(n_splits=args.folds, shuffle=True, random_state=args.seed)
     fold_scores = []
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(images), start=1):
         best_state, best_rmse = train_one_fold(
-            fold, train_idx, val_idx, images, targets, masks, args, device
+            fold, train_idx, val_idx, images, targets, masks, flip_indices, x_mask, args, device
         )
         fold_scores.append(best_rmse)
 
