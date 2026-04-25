@@ -32,6 +32,7 @@ def set_seed(seed: int) -> None:
 
 
 def rmse_with_mask(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> float:
+    # Targets are normalized to [0, 1] during training; RMSE is reported in pixel space.
     se = (((pred - target) * IMAGE_SIZE) ** 2) * mask
     mse = se.sum() / mask.sum().clamp_min(1.0)
     return float(torch.sqrt(mse).item())

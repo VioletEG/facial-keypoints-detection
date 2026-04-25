@@ -29,6 +29,12 @@ def denormalize_coordinates(coords: np.ndarray) -> np.ndarray:
 
 
 def build_horizontal_flip_mappings(target_columns: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """Build index mapping and x-coordinate mask used for horizontal flips.
+
+    Expected naming follows the Kaggle convention:
+    `left_*` and `right_*` columns are treated as mirrored pairs.
+    Columns without those prefixes map to themselves.
+    """
     col_to_idx = {c: i for i, c in enumerate(target_columns)}
     flip_indices = np.arange(len(target_columns), dtype=np.int64)
     x_mask = np.zeros(len(target_columns), dtype=bool)
@@ -44,6 +50,16 @@ def build_horizontal_flip_mappings(target_columns: list[str]) -> tuple[np.ndarra
         x_mask[i] = col.endswith("_x")
 
     return flip_indices, x_mask
+
+
+def apply_horizontal_flip_to_targets(
+    targets: np.ndarray,
+    flip_indices: np.ndarray,
+    x_mask: np.ndarray,
+) -> np.ndarray:
+    flipped = targets[..., flip_indices].copy()
+    flipped[..., x_mask] = 1.0 - flipped[..., x_mask]
+    return flipped
 
 
 def _parse_image(pixel_string: str) -> np.ndarray:
@@ -115,8 +131,7 @@ class FacialKeypointsDataset(Dataset):
 
         if self.augment and np.random.rand() < 0.5:
             image = np.flip(image, axis=1).copy()
-            target = target[self.flip_indices].copy()
+            target = apply_horizontal_flip_to_targets(target, self.flip_indices, self.x_mask)
             mask = mask[self.flip_indices].copy()
-            target[self.x_mask] = 1.0 - target[self.x_mask]
 
         return torch.from_numpy(image).unsqueeze(0), torch.from_numpy(target), torch.from_numpy(mask)

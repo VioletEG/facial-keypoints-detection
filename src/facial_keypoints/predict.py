@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from facial_keypoints.data import (
     FacialKeypointsDataset,
     IMAGE_SIZE,
+    apply_horizontal_flip_to_targets,
     build_horizontal_flip_mappings,
     denormalize_coordinates,
     load_id_lookup,
@@ -57,17 +58,15 @@ def predict_with_ensemble(ckpt_paths: list[Path], images: np.ndarray, batch_size
         model.load_state_dict(payload["model_state"])
         model.eval()
         flip_indices, x_mask = build_horizontal_flip_mappings(this_target_cols)
-        flip_indices_t = torch.as_tensor(flip_indices, dtype=torch.long, device=device)
-        x_indices_t = torch.as_tensor(np.flatnonzero(x_mask), dtype=torch.long, device=device)
 
         preds = []
         with torch.no_grad():
             for xb in loader:
                 xb = xb.to(device)
-                pred = model(xb)
-                pred_flip = model(torch.flip(xb, dims=[3])).index_select(1, flip_indices_t)
-                pred_flip[:, x_indices_t] = 1.0 - pred_flip[:, x_indices_t]
-                preds.append(((pred + pred_flip) * 0.5).cpu().numpy())
+                pred = model(xb).cpu().numpy()
+                pred_flip = model(torch.flip(xb, dims=[3])).cpu().numpy()
+                pred_flip = apply_horizontal_flip_to_targets(pred_flip, flip_indices, x_mask)
+                preds.append((pred + pred_flip) * 0.5)
 
         fold_pred = np.concatenate(preds, axis=0)
         ensemble = fold_pred if ensemble is None else ensemble + fold_pred
